@@ -14,9 +14,9 @@ const getAllLinks = async (page) => {
   return links;
 };
 
-const getLinksRecursively = async (page, url, baseDomain, visitedLinks = new Set()) => {
+const getLinksRecursively = async (page, url, baseDomain, visitedLinks = new Set(), tree = {}) => {
   if (visitedLinks.has(url)) {
-    return null; // Eğer URL daha önce ziyaret edildiyse, bir şey döndürme
+    return; // Eğer URL daha önce ziyaret edildiyse, bir şey döndürme
   }
 
   visitedLinks.add(url); // URL'yi ziyaret edildi olarak işaretle
@@ -25,22 +25,32 @@ const getLinksRecursively = async (page, url, baseDomain, visitedLinks = new Set
   try {
     await page.goto(url, { waitUntil: 'domcontentloaded' });
 
-    const links = await getAllLinks(page); // Sayfadaki tüm bağlantıları al
-    const uniqueLinks = links
-      .filter((link) => !visitedLinks.has(link)) // Ziyaret edilmemiş olanları filtrele
-      .filter((link) => new URL(link).hostname === baseDomain); // Sadece tam eşleşen domain'e ait bağlantıları filtrele
+    const links = await getAllLinks(page);
+    console.log(links);
 
-    const tree = { url, subLinks: [] };
+    const uniqueLinks = []
+    links.forEach(element => {
+      if ((new URL(element).hostname === baseDomain) || ("www." + new URL(element).hostname === baseDomain)) { uniqueLinks.push(element); }
+    });
+
+    const pathParts = new URL(url).pathname.split('/').filter(Boolean); // URL'nin yol kısmını parçala
+    const currentNode = pathParts.reduce((acc, part) => {
+      if (!acc[part]) acc[part] = {};
+      return acc[part];
+    }, tree);
 
     for (const link of uniqueLinks) {
-      const subTree = await getLinksRecursively(page, link, baseDomain, visitedLinks);
-      if (subTree) tree.subLinks.push(subTree);
+      const subPath = new URL(link).pathname.split('/').filter(Boolean);
+      const child = subPath[pathParts.length]; // Mevcut seviyedeki alt yol
+      if (child) {
+        if (!currentNode[child]) {
+          currentNode[child] = {};
+        }
+        await getLinksRecursively(page, link, baseDomain, visitedLinks, tree);
+      }
     }
-
-    return tree; // Ağacın bu dalını döndür
   } catch (error) {
     console.error(`Failed to visit ${url}:`, error.message);
-    return null;
   }
 };
 
@@ -50,9 +60,11 @@ const saveToExcel = (data, filename) => {
   console.log(`Saving Excel file to: ${filePath}`);
 
   const flattenTree = (node, parent = '') => {
-    const flat = [{ Link: node.url, Parent: parent }];
-    for (const subLink of node.subLinks) {
-      flat.push(...flattenTree(subLink, node.url));
+    const flat = [];
+    for (const key in node) {
+      const newParent = parent ? `${parent}/${key}` : key;
+      flat.push({ Path: newParent, Parent: parent });
+      flat.push(...flattenTree(node[key], newParent));
     }
     return flat;
   };
@@ -70,12 +82,15 @@ const main = async () => {
   const browser = await launch({ headless: true });
   const page = await browser.newPage();
 
-  const startUrl = 'https://www.rastmakine.com';
+  const startUrl = 'https://www.karacahealthcare.com';
   const baseDomain = new URL(startUrl).hostname;
 
-  const linkTree = await getLinksRecursively(page, startUrl, baseDomain);
+  const linkTree = {};
+  await getLinksRecursively(page, startUrl, baseDomain, new Set(), linkTree);
 
-  console.log('Link tree:', JSON.stringify(linkTree, null, 2));
+  console.log(linkTree);
+
+  // console.log('Link tree:', JSON.stringify(linkTree, null, 2));
 
   saveToExcel(linkTree, 'links.xlsx');
 
