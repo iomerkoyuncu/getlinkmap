@@ -19,7 +19,6 @@ const getLinksRecursively = async (page, url, baseDomain, visitedLinks = new Set
     await page.goto(url, { waitUntil: 'domcontentloaded' });
 
     const links = await getAllLinks(page);
-    console.log(links);
     const uniqueLinks = links.filter(link => new URL(link).hostname === baseDomain || "www." + new URL(link).hostname === baseDomain);
 
     const pathParts = new URL(url).pathname.split('/').filter(Boolean);
@@ -70,7 +69,7 @@ const flattenTreeForExcel = (node, parent = '') => {
   return flat;
 };
 
-const getLinkTree = async (url, outputPath) => {
+const getLinkMap = async (url, outputPath) => {
   const browser = await launch({ headless: true });
   const page = await browser.newPage();
   const baseDomain = new URL(url).hostname;
@@ -89,5 +88,6 @@ const getLinkTree = async (url, outputPath) => {
   }
 };
 
-export default getLinkTree;
+module.exports = { getLinkMap, getAllLinks };
+
 
