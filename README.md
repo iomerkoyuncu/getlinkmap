@@ -17,8 +17,14 @@ npm install getlinkmap
 To generate a link map for a website, use the following command:
 
 ```bash
-getLinkTree('https://www.ismetomerkoyuncu.com/', './output').then(console.log).catch(console.error); // As xlsx
-getLinkTree('https://www.ismetomerkoyuncu.com/').then(console.log).catch(console.error); // As array
+getLinkMap('https://www.ismetomerkoyuncu.com', { recursion: false, includeExternalLinks: true })
+  .then(data => console.log('Link Map:', data))
+  .catch(console.error);
+
+// Save as Excel
+getLinkMap('https://www.ismetomerkoyuncu.com', { recursion: false, includeExternalLinks: true }, './output')
+  .then(filePath => console.log(`Excel file created at: ${filePath}`))
+  .catch(console.error);
 ```
 
 This will create a visual map of the links found on the website.

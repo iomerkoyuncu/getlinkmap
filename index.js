@@ -10,7 +10,7 @@ const getAllLinks = async (page) => {
   return links;
 };
 
-const getLinksRecursively = async (page, url, baseDomain, visitedLinks = new Set(), tree = {}) => {
+const getLinksRecursively = async (recursion, includeExternalLinks, page, url, baseDomain, visitedLinks = new Set(), tree = {}) => {
   if (visitedLinks.has(url)) return;
 
   visitedLinks.add(url);
@@ -19,13 +19,28 @@ const getLinksRecursively = async (page, url, baseDomain, visitedLinks = new Set
     await page.goto(url, { waitUntil: 'domcontentloaded' });
 
     const links = await getAllLinks(page);
-    const uniqueLinks = links.filter(link => new URL(link).hostname === baseDomain || "www." + new URL(link).hostname === baseDomain);
+    const uniqueLinks = links.filter(link => {
+      const hostname = new URL(link).hostname;
+      return includeExternalLinks || hostname === baseDomain || hostname === `www.${baseDomain}`;
+    });
 
     const pathParts = new URL(url).pathname.split('/').filter(Boolean);
     const currentNode = pathParts.reduce((acc, part) => acc[part] || (acc[part] = {}), tree);
 
-    for (const link of uniqueLinks) {
-      await getLinksRecursively(page, link, baseDomain, visitedLinks, tree);
+    uniqueLinks.forEach(link => {
+      const linkHostname = new URL(link).hostname;
+      const linkParts = new URL(link).pathname.split('/').filter(Boolean);
+      const linkNode = linkHostname === baseDomain ? currentNode : (tree[linkHostname] || (tree[linkHostname] = {}));
+      linkParts.reduce((acc, part) => acc[part] || (acc[part] = {}), linkNode);
+    });
+
+    if (recursion) {
+      for (const link of uniqueLinks) {
+        const linkHostname = new URL(link).hostname;
+        if (linkHostname === baseDomain || linkHostname === `www.${baseDomain}`) {
+          await getLinksRecursively(recursion, includeExternalLinks, page, link, baseDomain, visitedLinks, currentNode);
+        }
+      }
     }
   } catch (error) {
     console.error(`Failed to visit ${url}:`, error.message);
@@ -69,25 +84,25 @@ const flattenTreeForExcel = (node, parent = '') => {
   return flat;
 };
 
-const getLinkMap = async (url, outputPath) => {
+const getLinkMap = async (url, options, outputPath) => {
   const browser = await launch({ headless: true });
   const page = await browser.newPage();
   const baseDomain = new URL(url).hostname;
   const linkTree = {};
 
-  await getLinksRecursively(page, url, baseDomain, new Set(), linkTree);
+  await getLinksRecursively(options.recursion, options.includeExternalLinks, page, url, baseDomain, new Set(), linkTree);
   await browser.close();
 
   if (outputPath) {
     const filename = `${new URL(url).hostname}-links.xlsx`;
     const filePath = saveToExcel(linkTree, outputPath, filename);
-    return filePath; // Excel dosya yolu döndürülüyor
+    return filePath;
   } else {
     const flatData = flattenTreeForOutput(linkTree);
-    return flatData; // Dizi olarak döndürülüyor
+    return flatData;
   }
 };
 
-module.exports = { getLinkMap, getAllLinks };
+module.exports = { getLinkMap };
 
-
+//getLinkMap('https://www.ismetomerkoyuncu.com', { recursion: false, includeExternalLinks: false }).then(console.log).catch(console.error);
